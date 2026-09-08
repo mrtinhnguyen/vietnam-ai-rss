@@ -7,8 +7,10 @@ import { enableImageDrag, prepareMarkdownImageDrags } from './image-drag';
 import { SelectionCapture } from './selection';
 import { readingFonts, selectableFonts, fontFamily } from './fonts';
 import { articleFragment } from './content';
-import { modeLabels, modeSchema, readingFontSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode } from './model';
-export const VIEW_TYPE = 'qiaomu-ai-rss-reader';
+import { t } from './i18n';
+import { modeLabels, modeSchema, readingFontSchema, safeUrl, type ChannelState, type Bundle, type Entry, type Mode } from './model';
+import { cachedTranslation, displaySummary, displayTitle, isChineseEntry, isChineseText, rememberTranslation, translationStamp, translateHtml, translateTexts } from './translate';
+export const VIEW_TYPE = 'vietnam-ai-rss-reader';
 type Filter = 'all' | 'unread' | 'favorites';
 function feedHost(url: string) { try { return new URL(url).hostname; } catch { return 'RSS'; } }
 export class ReaderView extends ItemView {
@@ -62,7 +64,7 @@ export class ReaderView extends ItemView {
   private refreshButton!: HTMLButtonElement;
   private filters!: HTMLElement;
   private entries: Entry[] = [];
-  private source = '';
+  private source = '@local';
   private filter: Filter = 'all';
   private unreadSession = new Set<string>();
   private query = '';
@@ -89,13 +91,13 @@ export class ReaderView extends ItemView {
     super(leaf); this.mode = plugin.state.settings.defaultMode;
   }
   getViewType() { return VIEW_TYPE; }
-  getDisplayText() { return 'Qiaomu AI RSS'; }
+  getDisplayText() { return t.pluginName; }
   getIcon() { return 'rss'; }
   onOpen(): Promise<void> {
     this.reset();
     this.registerDomEvent(this.contentEl.ownerDocument, 'pointerdown', event => {
       const target = event.target as HTMLElement;
-      if (!this.appearanceOpen || target.closest?.('.qrs-reading-settings') || target.closest?.('[data-qrs-label="阅读设置"]')) return;
+      if (!this.appearanceOpen || target.closest?.('.qrs-reading-settings') || target.closest?.(`[data-qrs-label="${t.readingSettings}"]`)) return;
       this.appearanceOpen = false; this.reader.querySelector('.qrs-reading-settings')?.remove();
       this.reader.querySelector('[aria-controls="' + this.appearanceId + '"]')?.setAttribute('aria-expanded', 'false');
       this.run(() => this.plugin.persist());
@@ -114,12 +116,12 @@ export class ReaderView extends ItemView {
         try {
           this.plugin.remember(bundle);
           const result = await this.plugin.appendToDailyNote(bundle.entry, excerpt, mode, current && note ? note : undefined);
-          new Notice(result.added ? `已追加到 ${result.file.basename}` : '这篇文章或摘录已在笔记中。');
-        } catch (error) { new Notice(error instanceof Error ? error.message : '无法追加到笔记。'); }
+          new Notice(result.added ? t.appendToFile(result.file.basename) : t.alreadyInNote);
+        } catch (error) { new Notice(error instanceof Error ? error.message : t.cannotAppend); }
       };
       new Menu().setUseNativeMenu(false)
-        .addItem(item => item.setTitle(note ? `追加到当前笔记：${note.basename}` : '追加到当前笔记（请先打开笔记）').setIcon('file-pen-line').setDisabled(!note).onClick(() => append(true)))
-        .addItem(item => item.setTitle('追加到今日日记').setIcon('calendar-days').onClick(() => append(false)))
+        .addItem(item => item.setTitle(note ? t.appendToCurrent(note.basename) : t.appendToCurrentNeedNote).setIcon('file-pen-line').setDisabled(!note).onClick(() => append(true)))
+        .addItem(item => item.setTitle(t.appendToDaily).setIcon('calendar-days').onClick(() => append(false)))
         .showAtMouseEvent(event);
     });
     this.selectionCapture = new SelectionCapture(this.contentEl.ownerDocument, () => this.reader, () => {
@@ -132,12 +134,12 @@ export class ReaderView extends ItemView {
           const result = current && note
             ? await this.plugin.appendToDailyNote(bundle.entry, text, mode, note)
             : await this.plugin.noteArticle(bundle.entry, text, mode);
-          new Notice(result.added ? `摘录已添加到 ${result.file.basename}` : '这段摘录已在笔记中。');
-        } catch (error) { new Notice(error instanceof Error ? error.message : '摘录失败，请重试。'); }
+          new Notice(result.added ? t.excerptAdded(result.file.basename) : t.excerptExists);
+        } catch (error) { new Notice(error instanceof Error ? error.message : t.excerptFailed); }
       };
       return [
-        { label: '追加到今日日记', icon: 'calendar-plus', save: text => capture(text, false) },
-        { label: note ? `追加到当前笔记：${note.basename}` : '追加到当前笔记（请先打开笔记）', icon: 'file-pen-line', disabled: !note, save: text => capture(text, true) },
+        { label: t.appendToDaily, icon: 'calendar-plus', save: text => capture(text, false) },
+        { label: note ? t.appendToCurrent(note.basename) : t.appendToCurrentNeedNote, icon: 'file-pen-line', disabled: !note, save: text => capture(text, true) },
       ];
     });
     return Promise.resolve();
@@ -157,17 +159,17 @@ export class ReaderView extends ItemView {
     const remembered = this.plugin.state.settings.lastSource;
     const localExists = this.plugin.state.subscriptions.some(feed => feed.id === remembered);
     const groupExists = remembered.startsWith('@group:') && this.plugin.state.subscriptions.some(feed => feed.group === remembered.slice(7));
-    this.focused = false; this.source = remembered === '@local' || this.plugin.state.settings.markdownFolders.some(folder => vaultSourceId(folder) === remembered) || groupExists || localExists || this.plugin.state.sources.some(source => source.id === remembered) ? remembered : '';
+    this.focused = false; this.source = remembered === '@local' || this.plugin.state.settings.markdownFolders.some(folder => vaultSourceId(folder) === remembered) || groupExists || localExists ? remembered : '@local';
     this.cursor = ''; this.bundle = null; this.loading = false; this.hasMore = false;
     this.mode = this.plugin.state.settings.defaultMode;
-    this.entries = this.personalScope() ? this.localEntries() : this.source ? [] : this.plugin.state.entries;
+    this.entries = this.vaultScope() ? [] : this.localEntries();
     this.build();
     const saved = this.plugin.state.channelStates[this.channelKey()];
     if (saved) { this.restoreChannel(saved); if (!this.entries.length) void this.loadEntries(); }
     else { this.renderList(); this.renderReader(); void this.loadEntries(); }
   }
   private run(action: () => Promise<void>) {
-    void action().catch(error => { if (!this.closed) new Notice(error instanceof Error ? error.message : '操作失败，请重试。'); });
+    void action().catch(error => { if (!this.closed) new Notice(error instanceof Error ? error.message : t.actionFailed); });
   }
   private addIconButton(parent: HTMLElement, icon: string, label: string, action: () => void): HTMLButtonElement {
     const button = parent.createEl('button', { cls: 'qrs-icon', attr: { 'data-qrs-label': label } });
@@ -180,7 +182,7 @@ export class ReaderView extends ItemView {
     const font = readingFonts.find(font => font.id === settings.fontFamily)!;
     this.contentEl.setCssProps({ '--qrs-font-family': fontFamily(settings.fontFamily, settings.customFont) });
     void this.plugin.fonts.load(this.contentEl.ownerDocument, settings.fontFamily).catch(() => {
-      if (!this.closed && this.plugin.state.settings.fontFamily === font.id) new Notice('字体加载失败，请重新选择重试。');
+      if (!this.closed && this.plugin.state.settings.fontFamily === font.id) new Notice(t.fontLoadFailed);
     });
     this.contentEl.setCssProps({
       '--qrs-font-size': `${settings.fontSize}px`, '--qrs-line-height': String(settings.lineHeight),
@@ -196,14 +198,14 @@ export class ReaderView extends ItemView {
     const bar = sidebar.createDiv('qrs-sidebar-toolbar');
     this.channelButton = bar.createEl('button', { cls: 'qrs-channel', attr: { 'aria-haspopup': 'dialog' } });
     this.renderChannel(); this.channelButton.addEventListener('click', () => this.pickChannel());
-    this.addIconButton(bar, 'plus', '添加或管理订阅', () => this.plugin.manageSubscriptions());
-    this.addIconButton(bar, 'search', '搜索文章 /', () => this.toggleSearch());
-    this.refreshButton = this.addIconButton(bar, 'refresh-cw', '刷新文章', () => { void this.loadEntries(false, true); });
+    this.addIconButton(bar, 'plus', t.addOrManage, () => this.plugin.manageSubscriptions());
+    this.addIconButton(bar, 'search', t.searchArticles, () => this.toggleSearch());
+    this.refreshButton = this.addIconButton(bar, 'refresh-cw', t.refreshArticles, () => { void this.loadEntries(false, true); });
     this.filters = sidebar.createDiv({ cls: 'qrs-filters', attr: { role: 'group' } });
     this.renderFilters();
     this.searchBox = sidebar.createDiv('qrs-search-box'); this.searchBox.toggleClass('is-hidden', !this.query);
-    const searchId = `${this.appearanceId}-search`; this.searchBox.createEl('label', { cls: 'qrs-visually-hidden', text: '搜索已载入文章', attr: { for: searchId } });
-    this.searchInput = this.searchBox.createEl('input', { type: 'search', placeholder: '搜索当前列表…', attr: { id: searchId } });
+    const searchId = `${this.appearanceId}-search`; this.searchBox.createEl('label', { cls: 'qrs-visually-hidden', text: t.searchLoaded, attr: { for: searchId } });
+    this.searchInput = this.searchBox.createEl('input', { type: 'search', placeholder: t.searchPlaceholder, attr: { id: searchId } });
     addSearchClear(this.searchInput);
     this.searchInput.value = this.query;
     this.searchInput.addEventListener('input', () => { this.query = this.searchInput.value; this.unreadSession.clear(); this.renderList(); });
@@ -232,29 +234,25 @@ export class ReaderView extends ItemView {
   }
   private renderFilters() {
     this.filters.empty();
-    for (const [value, label] of [['all', '全部'], ['unread', '未读'], ['favorites', '收藏']] as const) {
+    for (const [value, label] of [['all', t.filterAll], ['unread', t.filterUnread], ['favorites', t.filterFavorites]] as const) {
       const button = this.filters.createEl('button', { text: label, attr: { 'aria-pressed': String(value === this.filter), 'data-filter': value } });
       button.addEventListener('click', () => { this.filter = value; this.unreadSession.clear(); this.renderFilters(); this.renderList(); });
     }
-    this.addIconButton(this.filters, 'settings', '插件设置', () => this.plugin.openSettings()).addClass('qrs-settings-button');
+    this.addIconButton(this.filters, 'settings', t.pluginSettings, () => this.plugin.openSettings()).addClass('qrs-settings-button');
   }
   private channelChoices(): ChannelChoice[] {
     const feeds = this.plugin.state.subscriptions;
     const groups = [...new Set(feeds.map(feed => feed.group).filter(Boolean))].sort();
     return [
-      { id: '', name: '乔木精选', section: '聚合', subtitle: '乔木筛选的高质量内容', icon: 'tree-deciduous' },
-      { id: '@local', name: '我的订阅', section: '聚合', subtitle: `${feeds.length} 个个人订阅源`, icon: 'rss' },
-      ...this.plugin.state.settings.markdownFolders.map(folder => ({ id: vaultSourceId(folder), name: folder === '/' ? '整个库' : folder.split('/').at(-1)!, section: '库内文件夹' as const, subtitle: folder, icon: folder.endsWith('.md') ? 'file-text' : 'folder-open' })),
-      ...groups.map(group => ({ id: `@group:${group}`, name: group, section: '订阅分组' as const,
-        subtitle: `${feeds.filter(feed => feed.group === group).length} 个订阅源`, icon: 'folder' })),
-      ...this.plugin.state.sources.filter(source => source.enabled !== false).map(source => ({ id: source.id, name: source.name, section: '乔木频道' as const,
-        subtitle: ({ article: '文章', news: '新闻', podcast: '播客' } as Record<string, string>)[source.category || ''] || source.category || '乔木内容频道', monogram: source.name.trim().slice(0, 1) })),
-      ...feeds.map(feed => ({ id: feed.id, name: feed.name, section: '我的订阅源' as const,
-        subtitle: `${feed.group ? `${feed.group} · ` : ''}${feedHost(feed.url)} · ${feed.entries.length} 篇`, monogram: feed.name.trim().slice(0, 1), group: feed.group })),
+      { id: '@local', name: t.mySubscriptions, section: 'aggregate', subtitle: t.feedCount(feeds.length), icon: 'rss' },
+      ...this.plugin.state.settings.markdownFolders.map(folder => ({ id: vaultSourceId(folder), name: folder === '/' ? t.wholeVault : folder.split('/').at(-1)!, section: 'vault' as const, subtitle: folder, icon: folder.endsWith('.md') ? 'file-text' : 'folder-open' })),
+      ...groups.map(group => ({ id: `@group:${group}`, name: group, section: 'group' as const,
+        subtitle: t.groupFeedCount(feeds.filter(feed => feed.group === group).length), icon: 'folder' })),
+      ...feeds.map(feed => ({ id: feed.id, name: feed.name, section: 'feeds' as const,
+        subtitle: `${feed.group ? `${feed.group} · ` : ''}${feedHost(feed.url)} · ${t.articleCount(feed.entries.length)}`, monogram: feed.name.trim().slice(0, 1), group: feed.group })),
     ];
   }
   private vaultScope() { return this.source.startsWith('@vault:'); }
-  private personalScope() { return this.source === '@local' || this.source.startsWith('@group:') || this.source.startsWith('local:'); }
   private selectedFeeds() {
     return this.plugin.state.subscriptions.filter(feed => this.source === '@local' || feed.id === this.source ||
       (this.source.startsWith('@group:') && feed.group === this.source.slice(7)));
@@ -279,7 +277,7 @@ export class ReaderView extends ItemView {
     this.plugin.state.settings.lastSource = source; this.run(() => this.plugin.persist());
     this.bundle = null; this.articleVersion++; this.focused = false; this.contentEl.removeClass('qrs-focus');
     this.contentEl.removeClass('qrs-focus'); this.contentEl.removeClass('qrs-has-article');
-    this.entries = this.personalScope() ? this.localEntries() : source ? [] : this.plugin.state.entries;
+    this.entries = this.vaultScope() ? [] : this.localEntries();
     this.status.setText(''); this.renderChannel();
     const saved = this.plugin.state.channelStates[this.channelKey()];
     if (saved) { this.restoreChannel(saved); if (!this.entries.length && refresh) void this.loadEntries(); return; }
@@ -295,7 +293,7 @@ export class ReaderView extends ItemView {
   }
   private createResizeHandle(parent: HTMLElement) {
     const labelId = `${this.appearanceId}-resize`; const handle = parent.createDiv({ cls: 'qrs-resize', attr: { role: 'separator', tabindex: '0', 'aria-labelledby': labelId, 'aria-orientation': 'vertical', 'aria-valuemin': '220', 'aria-valuemax': '520', 'aria-valuenow': String(this.plugin.state.settings.listWidth) } });
-    handle.createSpan({ cls: 'qrs-visually-hidden', text: '调整文章列表宽度', attr: { id: labelId } });
+    handle.createSpan({ cls: 'qrs-visually-hidden', text: t.resizeList, attr: { id: labelId } });
     const resize = (width: number) => {
       const next = Math.round(Math.max(220, Math.min(520, width)));
       this.plugin.state.settings.listWidth = next;
@@ -341,53 +339,54 @@ export class ReaderView extends ItemView {
   private async loadEntries(more = false, force = false) {
     if (this.loading && more) return;
     const version = ++this.listVersion; this.loading = true; this.status.setText(''); this.refreshButton.addClass('is-loading');
-    const state = this.plugin.state;
     try {
-      if (this.vaultScope()) { this.entries = this.plugin.vaultSources.entries(this.source.slice(7)); this.hasMore = false; return; }
-      if (this.personalScope()) {
-        const feeds = this.selectedFeeds();
-        await this.plugin.subscriptions.refresh(feeds.map(feed => feed.id), this.reader.ownerDocument, force, () => {
-          if (!this.closed && version === this.listVersion) { this.entries = this.localEntries(); this.renderList(); }
-        });
-        if (this.closed || version !== this.listVersion) return;
-        this.entries = this.localEntries(); this.hasMore = false;
-        const failed = feeds.filter(feed => feed.error).length;
-        this.status.setText(failed ? `${failed} 个订阅刷新失败，保留已有文章。可在订阅管理中查看详情。` : '');
-        return;
-      }
-      const api = this.plugin.api();
-      const [page, sources] = await Promise.allSettled([api.entries(this.source, more ? this.cursor : ''), api.sources()]);
+      if (this.vaultScope()) { this.entries = this.plugin.vaultSources.entries(this.source.slice(7)); this.hasMore = false; void this.prefetchTranslations(version); return; }
+      const feeds = this.selectedFeeds();
+      await this.plugin.subscriptions.refresh(feeds.map(feed => feed.id), this.reader.ownerDocument, force, () => {
+        if (!this.closed && version === this.listVersion) { this.entries = this.localEntries(); this.renderList(); }
+      });
       if (this.closed || version !== this.listVersion) return;
-      if (sources.status === 'fulfilled') { state.sources = sources.value.sources; this.renderChannel(); }
-      if (page.status === 'rejected') throw page.reason;
-      this.entries = more ? [...new Map([...this.entries, ...page.value.entries].map(entry => [entry.id, entry])).values()] : page.value.entries;
-      this.cursor = page.value.nextCursor || ''; this.hasMore = !!page.value.hasMore && !!this.cursor;
-      if (!this.source) { state.entries = this.entries; state.updatedAt = Date.now(); }
-      await this.plugin.persist();
-      if (this.closed || version !== this.listVersion) return;
-      this.status.setText(sources.status === 'rejected' ? '频道加载失败，请刷新重试。' : '');
+      this.entries = this.localEntries(); this.hasMore = false;
+      const failed = feeds.filter(feed => feed.error).length;
+      this.status.setText(failed ? t.refreshFailed(failed) : '');
+      void this.prefetchTranslations(version);
     } catch (error) {
       if (this.closed || version !== this.listVersion) return;
-      this.status.setText(`${error instanceof Error ? error.message : '网络不可用。'}${this.entries.length ? ' 正在显示缓存。' : ' 点击刷新重试。'}`);
+      this.status.setText(`${error instanceof Error ? error.message : t.networkDownRetry}${this.entries.length ? ` ${t.networkDownCached}` : ''}`);
     } finally {
       if (!this.closed && version === this.listVersion) { this.loading = false; this.refreshButton.removeClass('is-loading'); this.renderList(); }
     }
+  }
+  private async prefetchTranslations(version: number) {
+    const pending = this.entries.filter(entry => isChineseEntry(entry) && !cachedTranslation(this.plugin.state.translations, entry.id, translationStamp(entry))?.title);
+    if (!pending.length) return;
+    try {
+      const titles = await translateTexts(pending.map(entry => entry.title), url => this.plugin.translateRequest(url));
+      const summaries = await translateTexts(pending.map(entry => entry.summary || ''), url => this.plugin.translateRequest(url));
+      if (this.closed || version !== this.listVersion) return;
+      pending.forEach((entry, index) => {
+        this.plugin.state.translations = rememberTranslation(this.plugin.state.translations, entry.id, {
+          title: titles[index] || entry.title, summary: summaries[index] || '', stamp: translationStamp(entry),
+        });
+      });
+      this.run(() => this.plugin.persist());
+      this.renderList();
+    } catch { /* List keeps the original title if translation is unavailable. */ }
   }
   private visibleEntries(): Entry[] {
     const state = this.plugin.state;
     const entries = this.filter === 'favorites' ? Object.values(state.favorites).map(b => b.entry) : this.entries;
     const query = this.query.trim().toLocaleLowerCase();
-    return entries.filter(entry => (this.vaultScope() ? entry.origin === 'vault' && entry.sourceId === this.source : this.personalScope()
-      ? entry.origin === 'local' && (this.source === '@local' || this.selectedFeeds().some(feed => feed.id === entry.sourceId))
-      : entry.origin !== 'local' && entry.origin !== 'vault' && (!this.source || entry.sourceId === this.source)) &&
+    return entries.filter(entry => (this.vaultScope() ? entry.origin === 'vault' && entry.sourceId === this.source
+      : entry.origin === 'local' && (this.source === '@local' || this.selectedFeeds().some(feed => feed.id === entry.sourceId))) &&
       (this.filter !== 'unread' || !state.readIds.includes(entry.id) || this.unreadSession.has(entry.id) || entry.id === this.bundle?.entry.id) &&
-      (!query || `${titleOf(entry)} ${entry.title} ${entry.summary || ''} ${this.sourceName(entry)}`.toLocaleLowerCase().includes(query)));
+      (!query || `${displayTitle(entry, state.translations, translationStamp(entry))} ${entry.title} ${entry.summary || ''} ${displaySummary(entry, state.translations, translationStamp(entry))} ${this.sourceName(entry)}`.toLocaleLowerCase().includes(query)));
   }
-  private sourceName(entry: Entry) { return this.plugin.state.subscriptions.find(feed => feed.id === entry.sourceId)?.name || entry.sourceName || this.plugin.state.sources.find(source => source.id === entry.sourceId)?.name || entry.sourceId; }
+  private sourceName(entry: Entry) { return this.plugin.state.subscriptions.find(feed => feed.id === entry.sourceId)?.name || entry.sourceName || entry.sourceId; }
   private excerpt(entry: Entry): string {
-    if (entry.summaryZh) return entry.summaryZh;
-    const text = entry.rewrite?.body.split('\n\n').find(line => /[\u3400-\u9fff]/.test(line) && !line.startsWith('#') && !line.startsWith('!['));
-    return (text || entry.summary || '').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`#]/g, '').slice(0, 160);
+    const stamp = translationStamp(entry);
+    const translated = displaySummary(entry, this.plugin.state.translations, stamp);
+    return (translated || entry.summary || '').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`#]/g, '').slice(0, 160);
   }
   private clearThumbnails() {
     this.thumbnailVersion++;
@@ -419,7 +418,7 @@ export class ReaderView extends ItemView {
   private renderList() {
     const restoreFocus = this.list.contains(this.contentEl.ownerDocument.activeElement);
     const scroll = this.list.scrollTop; this.list.empty(); const entries = this.visibleEntries();
-    if (!entries.length) this.list.createDiv({ cls: 'qrs-empty', text: this.loading ? '正在获取文章…' : this.filter === 'favorites' ? '收藏喜欢的文章，在这里慢慢读。' : this.personalScope() && !this.entries.length ? '还没有文章。点击 + 添加订阅，或点击刷新获取文章。' : '暂无匹配文章，试试其他频道或筛选。' });
+    if (!entries.length) this.list.createDiv({ cls: 'qrs-empty', text: this.loading ? t.loadingArticles : this.filter === 'favorites' ? t.favoritesEmpty : !this.entries.length ? t.noArticlesYet : t.noMatches });
     for (const entry of entries) {
       const read = this.plugin.state.readIds.includes(entry.id);
       const row = this.list.createEl('button', { cls: 'qrs-entry', attr: { 'data-entry-id': entry.id } });
@@ -432,15 +431,15 @@ export class ReaderView extends ItemView {
       meta.createSpan({ cls: 'qrs-date', text: date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : '' });
       const title = copy.createDiv('qrs-entry-title');
       title.createSpan({ cls: read ? 'qrs-read-dot' : 'qrs-unread-dot', attr: { 'aria-hidden': 'true' } });
-      title.createSpan({ cls: 'qrs-visually-hidden', text: read ? '已读' : '未读' });
-      title.createEl('h3', { text: titleOf(entry) });
+      title.createSpan({ cls: 'qrs-visually-hidden', text: read ? t.read : t.unread });
+      title.createEl('h3', { text: displayTitle(entry, this.plugin.state.translations, translationStamp(entry)) });
       if (this.plugin.state.favorites[entry.id]) setIcon(title.createSpan('qrs-bookmarked'), 'bookmark');
       const summary = this.excerpt(entry); if (summary) copy.createEl('p', { text: summary, cls: 'qrs-summary' });
       this.renderThumbnail(row, entry);
       row.addEventListener('click', () => { void this.openArticle(entry); });
     }
     if (this.hasMore && this.filter !== 'favorites') {
-      const button = this.list.createEl('button', { text: this.loading ? '加载中…' : '加载更早文章', cls: 'qrs-more' });
+      const button = this.list.createEl('button', { text: this.loading ? t.loadingMore : t.loadOlder, cls: 'qrs-more' });
       button.disabled = this.loading; button.addEventListener('click', () => { void this.loadEntries(true); });
     }
     this.list.scrollTop = scroll;
@@ -453,24 +452,51 @@ export class ReaderView extends ItemView {
     const version = ++this.articleVersion; const state = this.plugin.state;
     this.bundle = state.cache[entry.id] || state.favorites[entry.id] || { entry, rewrite: entry.rewrite ?? null, translation: null, fetchedAt: 0 };
     state.readIds = [...new Set([...state.readIds, entry.id])].slice(-5000); this.run(() => this.plugin.persist());
-    this.mode = entry.origin === 'local' || entry.origin === 'vault' ? 'original' : state.settings.defaultMode; this.message = ''; this.articleLoading = true; this.reader.setAttribute('aria-busy', 'true');
+    const chinese = isChineseEntry(entry) || isChineseText(entry.content || '');
+    this.mode = resume?.mode || (chinese ? 'translation' : 'original'); this.message = ''; this.articleLoading = true; this.reader.setAttribute('aria-busy', 'true');
     this.contentEl.addClass('qrs-has-article'); this.renderReader(); this.reader.scrollTop = 0; this.lastReaderTop = 0; this.reader.focus({ preventScroll: true }); this.renderList();
     if (resume) { this.mode = resume.mode; this.pendingScroll = { listTop: resume.listTop, readerTop: resume.readerTop }; this.renderReader(); this.restoreOffsets(); }
-    if (entry.origin === 'local') {
-      this.bundle = { entry, rewrite: null, translation: null, fetchedAt: Date.now() };
-      this.plugin.remember(this.bundle); this.run(() => this.plugin.persist());
-      this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false'); this.renderReader(); return;
-    }
     try {
-      const { bundle, warnings } = entry.origin === 'vault' ? { bundle: await this.plugin.vaultSources.article(entry), warnings: [] } : await this.plugin.api().article(entry.id);
+      const bundle = entry.origin === 'vault' ? await this.plugin.vaultSources.article(entry) : { entry, rewrite: null, translation: null, fetchedAt: Date.now() };
       if (this.closed || version !== this.articleVersion) return;
-      this.bundle = bundle; this.message = warnings.join('；'); this.plugin.remember(bundle); this.run(() => this.plugin.persist());
+      this.bundle = bundle;
+      const needsTranslation = chinese || isChineseText(bundle.entry.markdown || bundle.entry.content || '');
+      if (needsTranslation) { this.mode = resume?.mode || 'translation'; await this.applyTranslation(bundle, version); }
+      if (this.closed || version !== this.articleVersion) return;
+      this.plugin.remember(this.bundle); this.run(() => this.plugin.persist());
     } catch (error) {
       if (this.closed || version !== this.articleVersion) return;
-      const cached = this.bundle.fetchedAt ? ` 正在显示 ${new Date(this.bundle.fetchedAt).toLocaleString()} 的缓存。` : ' 可重新打开文章重试。';
-      this.message = `${error instanceof Error ? error.message : '获取正文失败。'}${cached}`;
+      const cached = this.bundle.fetchedAt ? t.showingCache(new Date(this.bundle.fetchedAt).toLocaleString()) : t.reopenToRetry;
+      this.message = `${error instanceof Error ? error.message : t.fetchBodyFailed}${cached}`;
     }
     if (!this.closed && version === this.articleVersion) { this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false'); this.renderReader(); this.renderList(); }
+  }
+  private async applyTranslation(bundle: Bundle, version: number) {
+    const entry = bundle.entry;
+    const stamp = translationStamp(entry);
+    const cached = cachedTranslation(this.plugin.state.translations, entry.id, stamp);
+    const source = entry.markdown || entry.content || '';
+    if (cached?.html) {
+      this.bundle = { ...bundle, translation: { titleZh: cached.title, summaryZh: cached.summary, content: [{ targetHtml: cached.html }] } };
+      return;
+    }
+    this.message = t.translating; this.renderReader();
+    try {
+      const doc = this.reader.ownerDocument;
+      const html = entry.markdown
+        ? await translateTexts([entry.markdown], url => this.plugin.translateRequest(url)).then(parts => parts[0] || entry.markdown || '')
+        : await translateHtml(source, url => this.plugin.translateRequest(url), doc);
+      const [title] = await translateTexts([entry.title], url => this.plugin.translateRequest(url));
+      if (this.closed || version !== this.articleVersion) return;
+      this.plugin.state.translations = rememberTranslation(this.plugin.state.translations, entry.id, {
+        title: title || entry.title, summary: cached?.summary || '', html, stamp,
+      });
+      this.bundle = { ...bundle, translation: { titleZh: title || entry.title, summaryZh: cached?.summary, content: [{ targetHtml: html }] } };
+      this.message = '';
+    } catch {
+      if (this.closed || version !== this.articleVersion) return;
+      this.mode = 'original'; this.message = t.translateFailed;
+    }
   }
   showSavedArticle(bundle: Bundle, mode: Mode) {
     this.stopRestoring();
@@ -484,7 +510,7 @@ export class ReaderView extends ItemView {
     this.run(async () => {
       this.plugin.remember(bundle);
       const result = await this.plugin.noteArticle(bundle.entry, '', this.mode);
-      new Notice(result.added ? '已添加到今日日记。' : '今日日记中已有这篇文章。');
+      new Notice(result.added ? t.addedToDaily : t.alreadyInDaily);
     });
   }
   private clearImages() {
@@ -506,7 +532,7 @@ export class ReaderView extends ItemView {
       } catch {
         if (this.closed || version !== this.renderVersion) return;
         holder.removeClass('is-loading');
-        const button = holder.createEl('button', { text: '图片加载失败 · 重试', cls: 'qrs-image-retry' });
+        const button = holder.createEl('button', { text: t.imageRetry, cls: 'qrs-image-retry' });
         button.onclick = () => { void load(img, url, holder); };
       }
     };
@@ -538,108 +564,110 @@ export class ReaderView extends ItemView {
     const bundle = this.bundle;
     if (!bundle) {
       const empty = this.reader.createDiv('qrs-welcome');
-      empty.createDiv({ cls: 'qrs-welcome-brand', text: 'QIAOMU RSS' });
-      empty.createEl('h2', { text: '给阅读，留一点时间。' });
-      empty.createEl('p', { cls: 'qrs-welcome-intro', text: '从列表中，挑一篇感兴趣的文章。' });
-      const tips = [
-        ['边读边记', '点击文章右上角的笔记本，在旁边打开今日日记。阅读和思考可以同时进行。'],
-        ['留下有用的一段', '选中文字后，可追加到今日日记或当前笔记。也可以从右键菜单操作。'],
-        ['把剪藏变成阅读', '在“来源”中添加库内文件夹，把剪藏的 Markdown 文章放进阅读器。'],
-        ['找到舒服的排版', '正文右上角的字体按钮可以调整字号、行距和版心，改动立即保存。'],
-        ['随时接着读', '切换频道后再回来，会恢复当前文章、列表位置和正文进度。'],
-      ];
+      empty.createDiv({ cls: 'qrs-welcome-brand', text: t.welcomeBrand });
+      empty.createEl('h2', { text: t.welcomeTitle });
+      empty.createEl('p', { cls: 'qrs-welcome-intro', text: t.welcomeIntro });
+      const tips = t.welcomeTips;
       if (this.welcomeSource !== this.source || this.welcomeTip < 0) { this.welcomeTip = (this.welcomeTip + 1) % tips.length; this.welcomeSource = this.source; }
       const tip = empty.createDiv('qrs-welcome-tip');
-      const showTip = () => { tip.empty(); const [title, copy] = tips[this.welcomeTip]; tip.createDiv({ cls: 'qrs-welcome-index', text: `${String(this.welcomeTip + 1).padStart(2, '0')} / ${String(tips.length).padStart(2, '0')}   阅读小记` }); tip.createEl('h3', { text: title }); tip.createEl('p', { text: copy }); };
+      const showTip = () => { tip.empty(); const [title, copy] = tips[this.welcomeTip]; tip.createDiv({ cls: 'qrs-welcome-index', text: `${String(this.welcomeTip + 1).padStart(2, '0')} / ${String(tips.length).padStart(2, '0')}   ${t.readingNote}` }); tip.createEl('h3', { text: title }); tip.createEl('p', { text: copy }); };
       showTip();
-      empty.createEl('button', { cls: 'qrs-welcome-next', text: '下一则 →' }).onclick = () => { this.welcomeTip = (this.welcomeTip + 1) % tips.length; showTip(); };
+      empty.createEl('button', { cls: 'qrs-welcome-next', text: t.nextTip }).onclick = () => { this.welcomeTip = (this.welcomeTip + 1) % tips.length; showTip(); };
       if (!Platform.isMobileApp) {
         const keys = empty.createDiv('qrs-welcome-keys');
-        for (const [key, label] of [['J / K', '下篇 / 上篇'], ['[', '收起列表'], ['/', '搜索文章']]) { const item = keys.createSpan(); item.createEl('kbd', { text: key }); item.createSpan({ text: label }); }
+        for (const [key, label] of [['J / K', t.nextArticle], ['[', t.collapseList], ['/', t.searchShortcut]]) { const item = keys.createSpan(); item.createEl('kbd', { text: key }); item.createSpan({ text: label }); }
       }
       return;
     }
     const toolbar = this.reader.createDiv('qrs-reader-toolbar');
-    this.addIconButton(toolbar, this.focused ? 'panel-left-open' : 'panel-left-close', '显示或收起文章列表 [', () => this.toggleFocus());
-    const modeId = `${this.appearanceId}-mode`; toolbar.createEl('label', { cls: 'qrs-visually-hidden', text: '阅读版本', attr: { for: modeId } });
-    const select = toolbar.createEl('select', { cls: 'qrs-mode-select', attr: { id: modeId, 'data-qrs-field': '阅读版本' } });
-    for (const [mode, label] of Object.entries(modeLabels).filter(([mode]) => (bundle.entry.origin !== 'local' && bundle.entry.origin !== 'vault') || mode === 'original')) select.createEl('option', { value: mode, text: label });
-    select.disabled = bundle.entry.origin === 'local' || bundle.entry.origin === 'vault';
-    select.value = this.mode; select.onchange = () => { this.mode = modeSchema.parse(select.value); this.renderReader(); };
+    this.addIconButton(toolbar, this.focused ? 'panel-left-open' : 'panel-left-close', t.toggleList, () => this.toggleFocus());
+    const chinese = isChineseEntry(bundle.entry) || isChineseText(bundle.entry.content || bundle.entry.markdown || '') || !!bundle.translation?.content?.length;
+    const modeId = `${this.appearanceId}-mode`; toolbar.createEl('label', { cls: 'qrs-visually-hidden', text: t.readingVersion, attr: { for: modeId } });
+    const select = toolbar.createEl('select', { cls: 'qrs-mode-select', attr: { id: modeId, 'data-qrs-field': t.readingVersion } });
+    for (const mode of (chinese ? ['translation', 'original'] : ['original']) as Mode[]) select.createEl('option', { value: mode, text: modeLabels[mode] });
+    select.disabled = !chinese;
+    select.value = chinese ? this.mode : 'original'; select.onchange = () => { this.mode = modeSchema.parse(select.value); this.renderReader(); };
     const nav = toolbar.createDiv('qrs-reader-nav');
-    this.addIconButton(nav, 'chevron-up', '上一篇 K', () => this.navigate(-1));
-    this.addIconButton(nav, 'chevron-down', '下一篇 J', () => this.navigate(1));
+    this.addIconButton(nav, 'chevron-up', t.prevArticle, () => this.navigate(-1));
+    this.addIconButton(nav, 'chevron-down', t.nextArticleBtn, () => this.navigate(1));
     const actions = toolbar.createDiv('qrs-actions');
-    const appearance = this.addIconButton(actions, 'type', '阅读设置', () => { this.appearanceOpen = !this.appearanceOpen; this.renderReader(true); });
+    const appearance = this.addIconButton(actions, 'type', t.readingSettings, () => { this.appearanceOpen = !this.appearanceOpen; this.renderReader(true); });
     appearance.setAttribute('aria-expanded', String(this.appearanceOpen)); appearance.setAttribute('aria-controls', this.appearanceId);
     const favorite = !!this.plugin.state.favorites[bundle.entry.id];
-    const bookmark = this.addIconButton(actions, 'bookmark', favorite ? '取消收藏' : '收藏文章', () => this.run(async () => {
+    const bookmark = this.addIconButton(actions, 'bookmark', favorite ? t.unfavorite : t.favorite, () => this.run(async () => {
       if (favorite) delete this.plugin.state.favorites[bundle.entry.id]; else this.plugin.state.favorites[bundle.entry.id] = bundle;
       await this.plugin.persist(); this.renderReader(true); this.renderList();
     }));
     bookmark.setAttribute('aria-pressed', String(favorite)); bookmark.toggleClass('is-bookmarked', favorite);
     const read = this.plugin.state.readIds.includes(bundle.entry.id);
-    const readButton = this.addIconButton(actions, read ? 'circle-check' : 'circle', read ? '标为未读' : '标为已读', () => this.run(async () => {
+    const readButton = this.addIconButton(actions, read ? 'circle-check' : 'circle', read ? t.markUnread : t.markRead, () => this.run(async () => {
       const ids = this.plugin.state.readIds.filter(id => id !== bundle.entry.id);
       this.plugin.state.readIds = read ? ids : [...ids, bundle.entry.id].slice(-5000);
       await this.plugin.persist(); this.renderReader(true); this.renderList();
     }));
     readButton.setAttribute('aria-pressed', String(read));
-    this.addIconButton(actions, 'notebook-pen', '记到今日日记', () => this.noteCurrent());
-    const more = this.addIconButton(actions, 'ellipsis', '更多文章操作', () => {
+    this.addIconButton(actions, 'notebook-pen', t.noteToDaily, () => this.noteCurrent());
+    const more = this.addIconButton(actions, 'ellipsis', t.moreActions, () => {
       const menu = new Menu(); const link = safeUrl(bundle.entry.link || '');
-      if (bundle.entry.origin === 'vault' && bundle.entry.markdownPath) menu.addItem(item => item.setTitle('打开源文件').setIcon('file-text').onClick(() => {
+      if (bundle.entry.origin === 'vault' && bundle.entry.markdownPath) menu.addItem(item => item.setTitle(t.openSourceFile).setIcon('file-text').onClick(() => {
         void this.app.workspace.openLinkText(bundle.entry.markdownPath!, '', true);
       }));
-      if (link) menu.addItem(item => item.setTitle('在浏览器打开原文').setIcon('external-link').onClick(() => { this.contentEl.win.open(link, '_blank', 'noopener,noreferrer'); }));
-      menu.addItem(item => item.setTitle('重新加载文章').setIcon('refresh-cw').onClick(() => { void this.openArticle(bundle.entry); }));
-      menu.addItem(item => item.setTitle('选择频道').setIcon('rss').onClick(() => this.pickChannel()));
+      if (link) menu.addItem(item => item.setTitle(t.openOriginal).setIcon('external-link').onClick(() => { this.contentEl.win.open(link, '_blank', 'noopener,noreferrer'); }));
+      menu.addItem(item => item.setTitle(t.reloadArticle).setIcon('refresh-cw').onClick(() => { void this.openArticle(bundle.entry); }));
+      menu.addItem(item => item.setTitle(t.pickChannel).setIcon('rss').onClick(() => this.pickChannel()));
       const rect = more.getBoundingClientRect(); menu.showAtPosition({ x: rect.left, y: rect.bottom });
     });
     if (this.appearanceOpen) this.renderAppearanceSettings(toolbar);
     if (previous) { this.reader.append(previous); this.reader.scrollTop = scroll; this.restoreOffsets(); return; }
     const article = this.reader.createEl('article', { cls: 'qrs-article' });
-    article.createEl('h1', { text: titleOf(bundle.entry) });
+    const translatedTitle = this.mode === 'translation' ? bundle.translation?.titleZh?.trim() : '';
+    article.createEl('h1', { text: translatedTitle || displayTitle(bundle.entry, this.plugin.state.translations, translationStamp(bundle.entry)) });
     if (this.message) article.createDiv({ cls: 'qrs-feedback', text: this.message, attr: { role: 'status' } });
     try {
-      if (bundle.entry.origin === 'vault' && bundle.entry.markdown != null) {
+      const translatedMarkdown = this.mode === 'translation' ? bundle.translation?.content?.[0]?.targetHtml : '';
+      if (bundle.entry.origin === 'vault' && bundle.entry.markdown != null && !(this.mode === 'translation' && translatedMarkdown)) {
         const prose = article.createDiv('qrs-prose');
         this.markdownComponent = new Component(); this.markdownComponent.load();
         void MarkdownRenderer.render(this.app, bundle.entry.markdown, prose, bundle.entry.markdownPath || '', this.markdownComponent)
           .then(() => prepareMarkdownImageDrags(this.app, this.plugin.images, prose, bundle.entry.markdownPath || ''))
-          .catch(() => { prose.setText('Markdown 无法显示，请打开源文件。'); });
+          .catch(() => { prose.setText(t.markdownFailed); });
+      } else if (bundle.entry.origin === 'vault' && translatedMarkdown) {
+        const prose = article.createDiv('qrs-prose');
+        this.markdownComponent = new Component(); this.markdownComponent.load();
+        void MarkdownRenderer.render(this.app, translatedMarkdown, prose, bundle.entry.markdownPath || '', this.markdownComponent)
+          .catch(() => { prose.setText(t.markdownFailed); });
       } else {
-      const fragment = articleFragment(bundle, this.mode, article.ownerDocument, this.plugin.state.settings.remoteImages);
+      const fragment = articleFragment(bundle, this.mode === 'rewrite' ? 'original' : this.mode, article.ownerDocument, this.plugin.state.settings.remoteImages);
       if (fragment) { this.prepareImages(fragment); article.createDiv('qrs-prose').append(fragment); }
-      else article.createDiv({ cls: 'qrs-empty', text: this.articleLoading ? '正在获取正文…' : `${modeLabels[this.mode]}暂无正文。可以切换版本，或从“更多”中打开原文。` });
+      else article.createDiv({ cls: 'qrs-empty', text: this.articleLoading ? t.fetchingBody : t.noBody(modeLabels[this.mode]) });
       }
-    } catch { article.createDiv({ cls: 'qrs-empty', text: '正文无法显示，请打开原文阅读。' }); }
+    } catch { article.createDiv({ cls: 'qrs-empty', text: t.bodyFailed }); }
     this.reader.scrollTop = scroll; this.restoreOffsets();
   }
   private renderAppearanceSettings(anchor: HTMLElement) {
     const settings = this.plugin.state.settings;
     const headingId = `${this.appearanceId}-heading`;
     const panel = anchor.createEl('section', { cls: 'qrs-reading-settings', attr: { id: this.appearanceId, 'aria-labelledby': headingId } });
-    const header = panel.createDiv('qrs-reading-settings-head'); header.createEl('strong', { text: '阅读设置', attr: { id: headingId } });
+    const header = panel.createDiv('qrs-reading-settings-head'); header.createEl('strong', { text: t.readingSettings, attr: { id: headingId } });
     const fields = panel.createDiv('qrs-reading-settings-fields');
     const row = (label: string) => { const el = fields.createEl('label', { cls: 'qrs-reading-setting' }); el.createSpan({ text: label }); return el; };
-    const fontRow = row('字体');
-    const font = fontRow.createEl('select', { attr: { 'data-qrs-field': '正文字体' } });
+    const fontRow = row(t.font);
+    const font = fontRow.createEl('select', { attr: { 'data-qrs-field': t.bodyFont } });
     for (const choice of selectableFonts.concat(readingFonts.filter(f => f.id === settings.fontFamily && !selectableFonts.includes(f)))) font.createEl('option', { value: choice.id, text: choice.name });
     font.value = settings.fontFamily;
-    const customRow = row('设备字体名称');
-    const custom = customRow.createEl('input', { type: 'text', value: settings.customFont, placeholder: '例如 PingFang SC' });
+    const customRow = row(t.deviceFontName);
+    const custom = customRow.createEl('input', { type: 'text', value: settings.customFont, placeholder: t.fontPlaceholder });
     customRow.hidden = settings.fontFamily !== 'custom';
     custom.oninput = () => { settings.customFont = custom.value.slice(0, 200); this.applyAppearance(); this.run(() => this.plugin.persist()); };
-    const sizeRow = row('字号'); const sizeValue = sizeRow.createEl('output', { text: `${settings.fontSize} px` });
-    const size = sizeRow.createEl('input', { type: 'range', value: String(settings.fontSize), attr: { min: '14', max: '32', step: '1', 'data-qrs-field': '正文字号' } });
-    const heightRow = row('行距'); const heightValue = heightRow.createEl('output', { text: `${settings.lineHeight.toFixed(1)} 倍` });
-    const height = heightRow.createEl('input', { type: 'range', value: String(settings.lineHeight), attr: { min: '1.5', max: '2.4', step: '0.1', 'data-qrs-field': '正文行距' } });
-    const widthRow = row('版心宽度');
-    const width = widthRow.createEl('select', { attr: { 'data-qrs-field': '正文宽度' } });
-    for (const [value, label] of [['28', '紧凑 · 28 字'], ['36', '适中 · 36 字'], ['44', '宽松 · 44 字']] as const) width.createEl('option', { value, text: label });
+    const sizeRow = row(t.fontSize); const sizeValue = sizeRow.createEl('output', { text: `${settings.fontSize} ${t.px}` });
+    const size = sizeRow.createEl('input', { type: 'range', value: String(settings.fontSize), attr: { min: '14', max: '32', step: '1', 'data-qrs-field': t.bodySize } });
+    const heightRow = row(t.lineHeight); const heightValue = heightRow.createEl('output', { text: `${settings.lineHeight.toFixed(1)} ${t.times}` });
+    const height = heightRow.createEl('input', { type: 'range', value: String(settings.lineHeight), attr: { min: '1.5', max: '2.4', step: '0.1', 'data-qrs-field': t.bodyLeading } });
+    const widthRow = row(t.measure);
+    const width = widthRow.createEl('select', { attr: { 'data-qrs-field': t.bodyWidth } });
+    for (const [value, label] of [['28', t.widthCompact], ['36', t.widthMedium], ['44', t.widthWide]] as const) width.createEl('option', { value, text: label });
     width.value = String(settings.lineWidth);
-    const update = () => { sizeValue.setText(`${settings.fontSize} px`); heightValue.setText(`${settings.lineHeight.toFixed(1)} 倍`); this.applyAppearance(); };
+    const update = () => { sizeValue.setText(`${settings.fontSize} ${t.px}`); heightValue.setText(`${settings.lineHeight.toFixed(1)} ${t.times}`); this.applyAppearance(); };
     font.onchange = () => { settings.fontFamily = readingFontSchema.parse(font.value); customRow.hidden = settings.fontFamily !== 'custom'; update(); this.run(() => this.plugin.persist()); };
     size.oninput = () => { settings.fontSize = Number(size.value); update(); this.run(() => this.plugin.persist()); }; size.onchange = () => this.run(() => this.plugin.persist());
     height.oninput = () => { settings.lineHeight = Number(height.value); update(); this.run(() => this.plugin.persist()); }; height.onchange = () => this.run(() => this.plugin.persist());

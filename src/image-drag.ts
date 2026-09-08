@@ -2,6 +2,7 @@ import { EditorView } from '@codemirror/view';
 import { Compartment, StateEffect } from '@codemirror/state';
 import { Notice, TFile, type Plugin, type App } from 'obsidian';
 import { imageMime, type LocalImages } from './images';
+import { t } from './i18n';
 import { safeUrl } from './model';
 
 const dragType = 'application/x-qiaomu-rss-image';
@@ -26,7 +27,7 @@ export function registerImageDrops(plugin: Plugin) {
         const markdown = '!' + plugin.app.fileManager.generateMarkdownLink(attachment, note.path);
         if (info.file === note) editor.replaceRange(markdown, editor.offsetToPos(offset));
         else await plugin.app.vault.process(note, content => content + '\n\n' + markdown + '\n');
-      } catch { new Notice('图片保存失败，请重新拖拽。'); }
+      } catch { new Notice(t.imageSaveFailed); }
       finally { if (cm) cm.dispatch({ effects: tracking.reconfigure([]) }); }
     })();
   }));
@@ -69,7 +70,7 @@ export async function prepareMarkdownImageDrags(app: App, images: LocalImages, p
       }
       if (prose.isConnected) enableImageDrag(img, blob);
     } catch {
-      img.ondragstart = event => { event.preventDefault(); new Notice('图片尚未加载完成，请重新打开文章后再拖拽。'); };
+      img.ondragstart = event => { event.preventDefault(); new Notice(t.imageNotReady); };
     }
   }));
 }

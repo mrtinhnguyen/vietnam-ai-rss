@@ -31,7 +31,7 @@ describe('local discovery catalog', () => {
     const state = initialState({ settings: { folder: 'Notes' }, subscriptions: [{ id: 'test', url: 'https://old.example/36kr/newsflashes', name: 'News' }] });
     const next = withServiceOrigin(state, 'https://qiaomu.example');
     expect(next.subscriptions[0].url).toBe('https://old.example/36kr/newsflashes');
-    expect(initialState({ settings: {} }).settings.lastSource).toBe('');
+    expect(initialState({ settings: {} }).settings.lastSource).toBe('@local');
   });
 });
 

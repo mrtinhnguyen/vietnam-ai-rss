@@ -1,4 +1,6 @@
 import { moment, normalizePath, type Vault } from 'obsidian';
+import { t } from './i18n';
+import { pluginId } from './plugin-id';
 import { safeUrl, titleOf, type Entry, type Mode } from './model';
 
 export interface DailyNoteSettings { folder: string; format: string; template: string }
@@ -32,18 +34,18 @@ export function dailyNotePath(settings: DailyNoteSettings, now: DateFormatter = 
 export interface CaptureOptions { vault?: string; article?: string; mode?: Mode; excerpt?: string }
 export function articleNoteUrl(options: CaptureOptions): string {
   const params = new URLSearchParams({ vault: options.vault || '', article: options.article || '', mode: options.mode || 'original' });
-  return `obsidian://qiaomu-ai-rss?${params.toString().replace(/\+/g, '%20')}`;
+  return `obsidian://${pluginId}?${params.toString().replace(/\+/g, '%20')}`;
 }
 export function markdownText(text: string): string { return text.replace(/([\\`*_{}[\]()<>#+.!|~-])/g, '\\$1'); }
 export function dailyNoteLink(entry: Entry, options: CaptureOptions = {}): string {
   const link = options.article ? articleNoteUrl(options) : entry.link ? safeUrl(entry.link) : null;
-  if (!link) throw new Error('这篇文章没有可用的链接。');
-  const title = markdownText(titleOf(entry).replace(/\s+/g, ' ').trim() || '未命名文章');
+  if (!link) throw new Error(t.noArticleLink);
+  const title = markdownText(titleOf(entry).replace(/\s+/g, ' ').trim() || t.untitledArticle);
   const original = (entry.link ? safeUrl(entry.link) : null) || (entry.origin === 'vault' && entry.markdownPath && options.vault ? `obsidian://open?vault=${encodeURIComponent(options.vault)}&file=${encodeURIComponent(entry.markdownPath)}` : null);
-  return `[${title}](<${link}>)` + (options.article && original ? ` · [原文](<${original}>)` : '');
+  return `[${title}](<${link}>)` + (options.article && original ? ` · [${t.originalLabel}](<${original}>)` : '');
 }
 export function repairArticleLinks(content: string): string {
-  return content.replace(/obsidian:\/\/qiaomu-ai-rss\?[^\s<>)]*/g, url => url.replace(/\+/g, '%20'));
+  return content.replace(/obsidian:\/\/(?:vietnam-ai-rss|qiaomu-ai-rss)\?[^\s<>)]*/g, url => url.replace(/\+/g, '%20'));
 }
 export function cleanCaptureMarkers(content: string): string {
   return content.replace(/^[ \t]*<!-- qrs-article:[^\r\n]*?-->[ \t]*(?:\r?\n)?/gm, '');
@@ -56,12 +58,12 @@ export function appendDailyNoteLink(content: string, entry: Entry, options: Capt
   // Upgrade an existing capture's header without changing its title or reading-version link.
   const originalSuffix = title.slice(title.indexOf('>)') + 2);
   if (options.article && originalSuffix) {
-    content = content.replace(/^(\[[^\n]*?\]\(<(obsidian:\/\/qiaomu-ai-rss\?[^\n>]+)>\))(?! · \[原文\])/gm, (whole: string, header: string, url: string) => {
+    content = content.replace(/^(\[[^\n]*?\]\(<(obsidian:\/\/(?:vietnam-ai-rss|qiaomu-ai-rss)\?[^\n>]+)>\))(?! · \[(?:原文|Bản gốc)\])/gm, (whole: string, header: string, url: string) => {
       try { return new URL(url).searchParams.get('article') === options.article ? header + originalSuffix : whole; } catch { return whole; }
     });
   }
   // Recognize 0.9.0 captures, including its form-encoded spaces and other reading modes.
-  const links = [...content.matchAll(/^\[[^\n]*?\]\(<([^\n>]+)>\)(?: · \[原文\]\(<[^\n>]+>\))?$/gm)];
+  const links = [...content.matchAll(/^\[[^\n]*?\]\(<([^\n>]+)>\)(?: · \[(?:原文|Bản gốc)\]\(<[^\n>]+>\))?$/gm)];
   const existing = links.find(match => {
     if (!options.article) return match[0] === title;
     try { return new URL(match[1]).searchParams.get('article') === options.article; } catch { return false; }

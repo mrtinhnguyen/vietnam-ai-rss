@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { t } from './i18n';
 import { bundleSchema, entrySchema, pageSchema, rewriteSchema, serviceUrl, sourceSchema, translationSchema, type Bundle } from './model';
 const remoteEntrySchema = entrySchema.transform(entry => ({ ...entry, origin: 'qiaomu' as const, markdown: undefined, markdownPath: undefined }));
 export interface HttpResponse { status: number; text: string }
@@ -11,12 +12,12 @@ export class RssApi {
     try {
       const result = await Promise.race([
         this.transport(this.base + path),
-        new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error('请求超时，请重试。')), 20000); }),
+        new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error(t.requestTimeout)), 20000); }),
       ]);
-      if (result.status < 200 || result.status >= 300) throw new Error(`服务暂不可用（HTTP ${result.status}）。`);
-      if (result.text.length > 12_000_000) throw new Error('服务返回的数据过大。');
+      if (result.status < 200 || result.status >= 300) throw new Error(t.serviceHttp(result.status));
+      if (result.text.length > 12_000_000) throw new Error(t.serviceTooLarge);
       const parsed = schema.safeParse(JSON.parse(result.text) as unknown);
-      if (!parsed.success) throw new Error('服务返回的数据格式不兼容。');
+      if (!parsed.success) throw new Error(t.serviceIncompatible);
       return parsed.data;
     } finally { window.clearTimeout(timer); }
   }
@@ -36,8 +37,8 @@ export class RssApi {
     ]);
     if (detail.status === 'rejected') throw detail.reason;
     const warnings: string[] = [];
-    if (rewrite.status === 'rejected') warnings.push('改写暂时无法加载');
-    if (translation.status === 'rejected') warnings.push('翻译暂时无法加载');
+    if (rewrite.status === 'rejected') warnings.push(t.rewriteUnavailable);
+    if (translation.status === 'rejected') warnings.push(t.translationUnavailable);
     const bundle = bundleSchema.parse({ entry: detail.value.entry,
       rewrite: rewrite.status === 'fulfilled' ? rewrite.value.rewrite : detail.value.entry.rewrite ?? null,
       translation: translation.status === 'fulfilled' ? translation.value.translation : null, fetchedAt: Date.now() });

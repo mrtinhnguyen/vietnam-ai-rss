@@ -1,5 +1,6 @@
 import createDOMPurify from 'dompurify';
 import { marked } from 'marked';
+import { t } from './i18n';
 import { safeUrl, type Bundle, type Mode } from './model';
 const tags = ['p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'b', 'i', 's', 'del', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'a', 'img', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'figure', 'figcaption', 'div', 'span', 'sup', 'sub'];
 export function articleFragment(bundle: Bundle, mode: Mode, doc: Document, images: boolean): DocumentFragment | null {
@@ -19,7 +20,7 @@ export function articleFragment(bundle: Bundle, mode: Mode, doc: Document, image
     if (!html) return null;
   }
   const win = doc.defaultView;
-  if (!win) throw new Error('阅读窗口不可用。');
+  if (!win) throw new Error(t.readerUnavailable);
   const fragment = createDOMPurify(win).sanitize(html, {
     RETURN_DOM_FRAGMENT: true, ALLOWED_TAGS: images ? tags : tags.filter(tag => tag !== 'img'),
     ALLOWED_ATTR: ['href', 'src', 'alt'], ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false,

@@ -1,6 +1,6 @@
 # Obsidian Community submission
 
-Status: **published** in the [Obsidian Community directory](https://community.obsidian.md/plugins/qiaomu-ai-rss) on 2026-09-07.
+Status: **not listed yet**. Submit as a new plugin id `vietnam-ai-rss` at [community.obsidian.md](https://community.obsidian.md). The old `qiaomu-ai-rss` listing is a different plugin and must not be reused.
 
 ## Latest verified review
 
@@ -19,8 +19,8 @@ The current official workflow uses [community.obsidian.md](https://community.obs
 
 ## Repository and release
 
-- Public repo: `joeseesun/qiaomu-ai-rss`.
-- ID: `qiaomu-ai-rss`; display name: `Qiaomu AI RSS`.
+- Public repo: `mrtinhnguyen/vietnam-ai-rss`.
+- ID: `vietnam-ai-rss`; display name: `Trình đọc RSS`.
 - Original plugin implementation. Product/API references are the author's QMReader projects, not a fork of another Obsidian plugin.
 - GPL-3.0-only license, source, README, privacy policy and third-party notices are included.
 - For each update, the manifest version and release tag must match exactly (without a `v` prefix). Read the current source version from `manifest.json`.

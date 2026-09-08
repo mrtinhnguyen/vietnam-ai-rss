@@ -1,15 +1,16 @@
 import fangsong from '../fonts/QiaomuReadingFangsong.woff2';
+import { t } from './i18n';
 import type { ReadingFont } from './model';
 
 export const readingFonts: { id: ReadingFont; name: string; family: string; data?: string }[] = [
-  { id: 'serif', name: '系统宋体', family: '"Songti SC",Georgia,serif' },
-  { id: 'sans', name: '系统黑体', family: 'var(--font-text),"PingFang SC",sans-serif' },
-  { id: 'custom', name: '设备字体…', family: 'serif' },
-  { id: 'sourceHanSerif', name: '思源宋体', family: '"Source Han Serif CN",serif' },
-  { id: 'sourceHanSans', name: '思源黑体', family: '"Source Han Sans CN",sans-serif' },
-  { id: 'wenkai', name: '霞鹜文楷 · 屏幕版', family: '"LXGW WenKai GB Screen",serif' },
-  { id: 'zhenkai', name: '霞鹜臻楷', family: '"LXGW ZhenKai GB",serif' },
-  { id: 'fangsong', name: '朱雀仿宋', family: 'QRS Fangsong', data: fangsong },
+  { id: 'serif', name: t.fontSerif, family: 'Georgia,"Times New Roman",serif' },
+  { id: 'sans', name: t.fontSans, family: 'var(--font-text),"Segoe UI","Be Vietnam Pro",sans-serif' },
+  { id: 'custom', name: t.fontCustom, family: 'serif' },
+  { id: 'sourceHanSerif', name: t.fontSourceHanSerif, family: '"Source Han Serif CN",serif' },
+  { id: 'sourceHanSans', name: t.fontSourceHanSans, family: '"Source Han Sans CN",sans-serif' },
+  { id: 'wenkai', name: t.fontWenkai, family: '"LXGW WenKai GB Screen",serif' },
+  { id: 'zhenkai', name: t.fontZhenkai, family: '"LXGW ZhenKai GB",serif' },
+  { id: 'fangsong', name: t.fontFangsong, family: 'QRS Fangsong', data: fangsong },
 ];
 
 export const selectableFonts = readingFonts.filter(font => ['fangsong', 'serif', 'sans', 'custom'].includes(font.id));

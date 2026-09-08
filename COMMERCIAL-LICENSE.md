@@ -5,7 +5,7 @@
 如果你的分发方式无法遵守 GPL，例如希望分发包含本项目代码的闭源衍生产品，可联系向阳乔木讨论单独的商业授权：
 
 - X：[向阳乔木 @vista8](https://x.com/vista8)
-- GitHub：[@joeseesun](https://github.com/joeseesun)
+- GitHub：[@joeseesun](https://github.com/mrtinhnguyen)
 
 商业授权范围、费用、期限与支持服务以双方另行签署的书面协议为准。本文件是联系说明，本身不授予商业例外，也不向 GPL 增加收费或用途限制。
 

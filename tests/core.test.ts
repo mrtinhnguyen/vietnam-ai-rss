@@ -55,8 +55,8 @@ describe('untrusted remote content', () => {
     expect(url.searchParams.get('article')).toBe(options.article);
     expect(url.searchParams.get('mode')).toBe('rewrite');
     const first = appendDailyNoteLink('', bundle.entry, options);
-    expect(first.content).toContain('obsidian://qiaomu-ai-rss?');
-    expect(first.content).toContain('[原文](<https://example.com/news>)');
+    expect(first.content).toContain('obsidian://vietnam-ai-rss?');
+    expect(first.content).toContain('[Bản gốc](<https://example.com/news>)');
     expect(first.content).not.toMatch(/^- /m);
     expect(first.content).not.toContain('<script>');
     expect(appendDailyNoteLink(first.content, bundle.entry, options).added).toBe(false);
@@ -67,7 +67,7 @@ describe('untrusted remote content', () => {
     let content = appendDailyNoteLink('# My note\n', bundle.entry, a).content;
     content = appendDailyNoteLink(content, { ...bundle.entry, title: 'B' }, { ...a, article: 'b', excerpt: 'First B' }).content;
     content = appendDailyNoteLink(content, bundle.entry, { ...a, excerpt: 'Second A' }).content;
-    expect(content.split('obsidian://qiaomu-ai-rss?')).toHaveLength(3);
+    expect(content.split('obsidian://vietnam-ai-rss?')).toHaveLength(3);
     expect(content.indexOf('Second A')).toBeLessThan(content.indexOf('First B'));
     expect(content).toContain('# My note');
     expect(appendDailyNoteLink(content, bundle.entry, { ...a, excerpt: 'Second A' }).added).toBe(false);
@@ -77,15 +77,15 @@ describe('untrusted remote content', () => {
     const old = dailyNoteLink(bundle.entry, a).replace(/%20/g, '+') + '\n\nFirst\n\n';
     const result = appendDailyNoteLink(old, bundle.entry, a);
     expect(result.content).not.toContain('Qiaomu+RSS+QA');
-    expect(result.content.split('obsidian://qiaomu-ai-rss?')).toHaveLength(2);
+    expect(result.content.split('obsidian://vietnam-ai-rss?')).toHaveLength(2);
     expect(result.content).toContain('First\n\nSecond');
   });
   it('adds an original link to an existing grouped header without duplicating it', () => {
     const options = { article: 'a', vault: 'QA', excerpt: 'First' };
-    const old = appendDailyNoteLink('', bundle.entry, options).content.replace(' · [原文](<https://example.com/news>)', '');
+    const old = appendDailyNoteLink('', bundle.entry, options).content.replace(' · [Bản gốc](<https://example.com/news>)', '');
     const upgraded = appendDailyNoteLink(old, bundle.entry, { ...options, excerpt: 'Second' }).content;
-    expect(upgraded.split('[原文]')).toHaveLength(2);
-    expect(appendDailyNoteLink(upgraded, bundle.entry, options).content.split('[原文]')).toHaveLength(2);
+    expect(upgraded.split('[Bản gốc]')).toHaveLength(2);
+    expect(appendDailyNoteLink(upgraded, bundle.entry, options).content.split('[Bản gốc]')).toHaveLength(2);
   });
   it('removes legacy capture markers while keeping grouped excerpts and notes', () => {
     const options = { vault: 'QA', article: 'local:test', excerpt: 'First excerpt' };
@@ -97,12 +97,12 @@ describe('untrusted remote content', () => {
     expect(next).toContain('Personal note');
     expect(next).toContain('First excerpt');
     expect(next).toContain('Second excerpt');
-    expect(next.split('[原文]')).toHaveLength(2);
+    expect(next.split('[Bản gốc]')).toHaveLength(2);
   });
   it('links local Markdown captures back to their source file without a web URL', () => {
     const entry = { ...bundle.entry, origin: 'vault' as const, link: null, markdownPath: 'Clippings/My article.md' };
     const link = dailyNoteLink(entry, { vault: 'Qiaomu RSS QA', article: 'vault:file' });
-    expect(link).toContain('[原文](<obsidian://open?vault=Qiaomu%20RSS%20QA&file=Clippings%2FMy%20article.md>)');
+    expect(link).toContain('[Bản gốc](<obsidian://open?vault=Qiaomu%20RSS%20QA&file=Clippings%2FMy%20article.md>)');
   });
   it('respects daily-note folders, formats and common template tokens', () => {
     const now = { format: (format: string) => ({ 'YYYY/MM/DD': '2026/09/07', 'YYYY-MM-DD': '2026-09-07', 'HH:mm': '12:30' })[format] || format } as never;
@@ -136,7 +136,7 @@ describe('paths and persistence', () => {
     expect(initialState(JSON.parse(JSON.stringify(state))).settings).toMatchObject({ selectionPopup: true, markdownFolders: ['Clippings', 'Articles'] });
   });
   it('migrates and persists compact reading appearance settings', () => {
-    expect(initialState({ settings: {} }).settings).toMatchObject({ fontSize: 19, fontFamily: 'fangsong', lineHeight: 1.9, lineWidth: 36 });
+    expect(initialState({ settings: {} }).settings).toMatchObject({ fontSize: 19, fontFamily: 'sans', lineHeight: 1.9, lineWidth: 36 });
     const state = initialState({ settings: { fontSize: 24, fontFamily: 'sans', lineHeight: 2.2, lineWidth: 44 } });
     expect(initialState(JSON.parse(JSON.stringify(state))).settings).toMatchObject({ fontSize: 24, fontFamily: 'sans', lineHeight: 2.2, lineWidth: 44 });
   });
@@ -158,7 +158,7 @@ describe('API contract and failures', () => {
   });
   it('rejects HTTP and schema errors without rendering server error HTML', async () => {
     await expect(new RssApi('https://rss.qiaomu.ai', async () => ({ status: 503, text: '<secret>' })).entries()).rejects.toThrow('HTTP 503');
-    await expect(new RssApi('https://rss.qiaomu.ai', async () => ({ status: 200, text: '{"entries":[{}]}' })).entries()).rejects.toThrow('格式不兼容');
+    await expect(new RssApi('https://rss.qiaomu.ai', async () => ({ status: 200, text: '{"entries":[{}]}' })).entries()).rejects.toThrow('không tương thích');
   });
   it('retains usable article when an optional asset endpoint fails', async () => {
     const api = new RssApi('https://rss.qiaomu.ai', async url => url.endsWith('/rewrite') ? { status: 503, text: '' } : { status: 200, text: JSON.stringify(url.endsWith('/translation') ? { translation: null } : { entry: bundle.entry }) });
@@ -168,7 +168,7 @@ describe('API contract and failures', () => {
   it('times out stalled requests', async () => {
     vi.useFakeTimers();
     const api = new RssApi('https://rss.qiaomu.ai', () => new Promise(() => {}));
-    const assertion = expect(api.entries()).rejects.toThrow('请求超时');
+    const assertion = expect(api.entries()).rejects.toThrow('quá thời gian');
     await vi.advanceTimersByTimeAsync(20001); await assertion; vi.useRealTimers();
   });
 });

@@ -1,8 +1,10 @@
 import { z } from 'zod';
+import { t } from './i18n';
 
 export const modeSchema = z.enum(['rewrite', 'translation', 'original']);
 export type Mode = z.infer<typeof modeSchema>;
-export const modeLabels: Record<Mode, string> = { rewrite: '乔木改写', translation: '中文翻译', original: '原文' };
+export const modeLabels: Record<Mode, string> = { rewrite: t.translatedLabel, translation: t.translatedLabel, original: t.originalLabel };
+export const readingModes: Mode[] = ['translation', 'original'];
 export const readingFontSchema = z.enum(['serif', 'sans', 'sourceHanSerif', 'sourceHanSans', 'wenkai', 'zhenkai', 'fangsong', 'custom']);
 export type ReadingFont = z.infer<typeof readingFontSchema>;
 const optionalText = z.string().nullish();
@@ -16,6 +18,7 @@ export const entrySchema = z.object({
   markdownPath: optionalText, markdown: optionalText,
   link: optionalText, author: optionalText, published: optionalText, publishedTs: z.number().nullish(),
   summary: optionalText, summaryZh: optionalText, content: optionalText, image: optionalText,
+  language: optionalText,
   rewrite: rewriteSchema.nullish(),
 });
 export type Entry = z.infer<typeof entrySchema>;
@@ -39,19 +42,23 @@ export type ChannelState = z.infer<typeof channelStateSchema>;
 export const stateSchema = z.object({
   settings: z.object({
     baseUrl: z.string().default('https://rss.qiaomu.ai'), folder: z.string().default('Qiaomu RSS'),
-    defaultMode: modeSchema.default('rewrite'), remoteImages: z.boolean().default(true), listWidth: z.number().min(220).max(520).default(300),
-    fontSize: z.number().int().min(14).max(32).default(19), customFont: z.string().max(200).catch('').default(''), fontFamily: readingFontSchema.default('fangsong'),
+    defaultMode: modeSchema.default('original'), remoteImages: z.boolean().default(true), listWidth: z.number().min(220).max(520).default(300),
+    fontSize: z.number().int().min(14).max(32).default(19), customFont: z.string().max(200).catch('').default(''), fontFamily: readingFontSchema.default('sans'),
     lineHeight: z.number().min(1.5).max(2.4).default(1.9), lineWidth: z.union([z.literal(28), z.literal(36), z.literal(44)]).default(36),
     selectionPopup: z.boolean().default(true), markdownFolders: z.array(z.string()).default([]),
-    lastSource: z.string().max(300).default(''),
-  }).default({ baseUrl: 'https://rss.qiaomu.ai', folder: 'Qiaomu RSS', defaultMode: 'rewrite', remoteImages: true, listWidth: 300,
-    fontSize: 19, fontFamily: 'fangsong', customFont: '', lineHeight: 1.9, lineWidth: 36, lastSource: '', selectionPopup: true, markdownFolders: [] }),
+    lastSource: z.string().max(300).default('@local'),
+  }).default({ baseUrl: 'https://rss.qiaomu.ai', folder: 'Qiaomu RSS', defaultMode: 'original', remoteImages: true, listWidth: 300,
+    fontSize: 19, fontFamily: 'sans', customFont: '', lineHeight: 1.9, lineWidth: 36, lastSource: '@local', selectionPopup: true, markdownFolders: [] }),
   readIds: z.array(z.string()).default([]), favorites: z.record(z.string(), bundleSchema).default({}),
   entries: z.array(entrySchema).default([]), sources: z.array(sourceSchema).default([]),
   subscriptions: z.array(subscriptionSchema).default([]),
   channelStates: z.record(z.string(), channelStateSchema).catch({}).default({}),
   savedArticles: z.record(z.string(), bundleSchema).default({}),
   cache: z.record(z.string(), bundleSchema).default({}), updatedAt: z.number().default(0),
+  translations: z.record(z.string(), z.object({
+    title: z.string().default(''), summary: z.string().default(''), html: z.string().default(''),
+    stamp: z.string().default(''), at: z.number().default(0),
+  })).catch({}).default({}),
 });
 export type State = z.infer<typeof stateSchema>;
 export function initialState(data: unknown): State { return stateSchema.parse(data ?? {}); }
@@ -65,14 +72,14 @@ export function safeUrl(value: string, base?: string): string | null {
 export function serviceUrl(value: string): string {
   const url = new URL(value.trim());
   if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || !['', '/'].includes(url.pathname)) {
-    throw new Error('请输入 HTTPS 服务地址，不包含路径、账号或查询参数。');
+    throw new Error(t.httpsOnly);
   }
   return url.origin;
 }
 export function folderPath(value: string): string {
   const segments = value.trim().replace(/\\/g, '/').split('/');
   if (!segments.length || segments.some(s => !s || s.startsWith('.') || /[:*?"<>|]/.test(s) || [...s].some(c => c.charCodeAt(0) < 32))) {
-    throw new Error('请输入库内文件夹名称，不包含隐藏目录、空段或特殊字符。');
+    throw new Error(t.folderInvalid);
   }
   return segments.join('/');
 }

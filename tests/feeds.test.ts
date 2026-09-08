@@ -88,7 +88,7 @@ describe('local subscription lifecycle', () => {
     const state = initialState(null), persist = vi.fn(async () => {}), transport = vi.fn(async () => ({ status: 200, text: rss() }));
     const service = new Subscriptions(() => state, persist, transport);
     const feed = await service.add('https://example.com/feed', 'Tech', document);
-    await expect(service.add('https://example.com/feed#x', '', document)).rejects.toThrow('已经添加');
+    await expect(service.add('https://example.com/feed#x', '', document)).rejects.toThrow('đã được thêm');
     await service.edit(feed.id, 'My feed', 'AI'); await service.refresh([feed.id], document, true);
     expect(state.subscriptions).toHaveLength(1); expect(feed.entries).toHaveLength(1); expect(feed.name).toBe('My feed'); expect(feed.group).toBe('AI');
     expect(transport).toHaveBeenCalledTimes(2); expect(persist).toHaveBeenCalled();
@@ -99,14 +99,14 @@ describe('local subscription lifecycle', () => {
     const feed = await service.add('https://example.com/feed?secret=private', '', document);
     transport.mockRejectedValueOnce(new Error('Failed https://example.com/feed?secret=private'));
     await service.refresh([feed.id], document, true);
-    expect(feed.entries).toHaveLength(1); expect(feed.error).toContain('无法读取'); expect(feed.error).not.toContain('secret');
+    expect(feed.entries).toHaveLength(1); expect(feed.error).toContain('Không đọc được nguồn'); expect(feed.error).not.toContain('secret');
   });
   it('imports without fetching, skips existing feeds, and enforces capacity atomically', async () => {
     const state = initialState(null), transport = vi.fn(); const service = new Subscriptions(() => state, async () => {}, transport);
     expect(await service.import([{ url: 'https://example.com/feed', name: 'A', group: 'Tech' }])).toBe(1);
     expect(await service.import([{ url: 'https://example.com/feed', name: 'Overwrite', group: '' }])).toBe(0);
     expect(state.subscriptions[0].name).toBe('A'); expect(transport).not.toHaveBeenCalled();
-    await expect(service.import(Array.from({ length: 101 }, (_, i) => ({ url: `https://example.com/feed/${i}`, name: String(i), group: '' })))).rejects.toThrow('超过');
+    await expect(service.import(Array.from({ length: 101 }, (_, i) => ({ url: `https://example.com/feed/${i}`, name: String(i), group: '' })))).rejects.toThrow('vượt');
     expect(state.subscriptions).toHaveLength(1);
   });
   it('does not resurrect a feed deleted while its refresh is pending; keeps favorites', async () => {
@@ -135,7 +135,7 @@ describe('local subscription lifecycle', () => {
   it('times out stalled requests', async () => {
     vi.useFakeTimers(); const state = initialState(null);
     const service = new Subscriptions(() => state, async () => {}, () => new Promise(() => {}));
-    const assertion = expect(service.add('https://example.com/feed', '', document)).rejects.toThrow('超时');
+    const assertion = expect(service.add('https://example.com/feed', '', document)).rejects.toThrow('phản hồi');
     await vi.advanceTimersByTimeAsync(20001); await assertion; vi.useRealTimers();
   });
 });
