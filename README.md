@@ -12,14 +12,14 @@ Cần Obsidian **1.13.0** trở lên.
 
 ### Trong Obsidian
 
-Sau khi plugin có trên danh mục chính thức, vào **Settings → Community plugins**, tìm **Trình đọc RSS**, rồi bật.
+Sau khi plugin có trên danh mục chính thức, vào **Settings → Community plugins**, tìm **Vietnam AI RSS**, rồi bật.
 
 ### Cài thủ công
 
 1. Tải `main.js`, `manifest.json`, `styles.css` từ [Releases](https://github.com/mrtinhnguyen/vietnam-ai-rss/releases).
 2. Tạo thư mục `<kho>/.obsidian/plugins/vietnam-ai-rss/`.
 3. Đặt ba file vào thư mục đó.
-4. Bật **Trình đọc RSS** trong Community plugins.
+4. Bật **Vietnam AI RSS** trong Community plugins.
 5. Bấm biểu tượng RSS, hoặc chạy lệnh **Mở trình đọc RSS**.
 
 ### BRAT

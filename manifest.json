@@ -1,9 +1,9 @@
 {
   "id": "vietnam-ai-rss",
-  "name": "Trình đọc RSS",
+  "name": "Vietnam AI RSS",
   "version": "0.18.2",
   "minAppVersion": "1.13.0",
-  "description": "Đọc RSS và Atom cá nhân, dịch bài tiếng Trung sang tiếng Việt, rồi ghi liên kết vào nhật ký hôm nay.",
+  "description": "Read personal RSS and Atom feeds, translate Chinese articles into Vietnamese, and save links to the daily note.",
   "author": "TonyX",
   "authorUrl": "https://github.com/mrtinhnguyen",
   "isDesktopOnly": false
