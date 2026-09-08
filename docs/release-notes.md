@@ -1,3 +1,3 @@
-- 文章列表选中态改为独立的灰绿色配色，移除紫色边框。
-- 分别适配浅色、暗色与鼠标悬停状态，保持文章列表高度和信息密度。
-- 更新产品图标素材、真实界面截图和字体说明。
+- Giao diện tiếng Việt.
+- Đọc RSS/Atom cá nhân và Markdown trong kho. Bài tiếng Trung được dịch sang tiếng Việt.
+- Id plugin: `vietnam-ai-rss`.
